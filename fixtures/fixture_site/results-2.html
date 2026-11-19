@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Search Results - Page 2</title>
+</head>
+<body>
+  <main>
+    <h1>Search results</h1>
+    <p>Page 2 of 2</p>
+    <p>Query: <span id="query"></span></p>
+    <p role="status" aria-live="polite"></p>
+
+    <article data-record="job-003">
+      <h2 data-title>Senior Electrician - Gauteng</h2>
+      <p data-description>
+        Senior electrician vacancy supporting electrical maintenance.
+      </p>
+    </article>
+
+    <article data-record="job-004">
+      <h2 data-title>Data Analyst - Gauteng</h2>
+      <p data-description>
+        Data analyst vacancy supporting workforce planning.
+      </p>
+    </article>
+
+    <a href="results-1.html">Previous page</a>
+  </main>
+  <script>
+    const query = new URLSearchParams(window.location.search).get("query") ?? "";
+    document.getElementById("query").textContent = query;
+    document.querySelector('[role="status"]').textContent =
+      `Search complete: ${query}`;
+  </script>
+</body>
+</html>

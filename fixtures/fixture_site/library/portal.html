@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Public Records Room</title>
+</head>
+<body>
+  <main>
+    <h1>Public Records Room</h1>
+    <p>Search the published reports catalog.</p>
+    <label for="terms">Words or phrases</label>
+    <input id="terms" type="search">
+    <button type="button">Find documents</button>
+    <p role="status" aria-live="polite">Ready to search</p>
+  </main>
+  <script>
+    const terms = document.querySelector("#terms");
+    const findButton = document.querySelector("button");
+    findButton.addEventListener("click", () => {
+      const query = terms.value.trim();
+      if (!query) {
+        document.querySelector('[role="status"]').textContent =
+          "Enter words or phrases.";
+        return;
+      }
+
+      window.location.href =
+        `hits.html?terms=${encodeURIComponent(query)}`;
+    });
+  </script>
+</body>
+</html>

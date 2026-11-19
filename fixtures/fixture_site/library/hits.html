@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Published Reports</title>
+</head>
+<body>
+  <main>
+    <h1>Published Reports</h1>
+    <p>Results for <span id="terms"></span>.</p>
+    <p role="status" aria-live="polite"></p>
+
+    <article data-record="report-101">
+      <h2 data-title>Electrical Trades Outlook</h2>
+      <p data-description>
+        A public report on electrician occupations and training needs.
+      </p>
+    </article>
+    <article data-record="report-102">
+      <h2 data-title>Regional Transport Brief</h2>
+      <p data-description>
+        A public report about regional transport infrastructure.
+      </p>
+    </article>
+
+    <p>End of available results.</p>
+  </main>
+  <script>
+    const query = new URLSearchParams(window.location.search).get("terms") ?? "";
+    document.getElementById("terms").textContent = query;
+    document.querySelector('[role="status"]').textContent =
+      `Showing catalog results for ${query}`;
+  </script>
+</body>
+</html>

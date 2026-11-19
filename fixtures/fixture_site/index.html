@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Computer Agent Practice Page</title>
+</head>
+<body>
+  <main>
+    <h1>Local browser computer</h1>
+
+    <label for="query">Search query</label>
+    <input id="query" type="text">
+    <button type="button">Search</button>
+
+    <input id="unlabeled-query" type="text">
+    <button type="button" disabled>Disabled action</button>
+    <button type="button" hidden>Hidden action</button>
+    <div aria-hidden="true">
+      <button type="button">Hidden from assistive technology</button>
+    </div>
+    <p id="refresh-label">Refresh results</p>
+    <div
+      role="button"
+      tabindex="0"
+      aria-labelledby="refresh-label"
+      aria-disabled="true"
+    >
+      Refresh
+    </div>
+    <a href="#details">Open details</a>
+    <section id="details" aria-labelledby="details-title">
+      <h2 id="details-title">Details</h2>
+    </section>
+
+    <p role="status" aria-live="polite">Ready</p>
+  </main>
+
+  <script>
+    const queryInput = document.getElementById("query");
+    const status = document.querySelector('[role="status"]');
+    const searchButton = document.querySelector("button");
+
+    searchButton.addEventListener("click", () => {
+      const query = queryInput.value.trim();
+      if (!query) {
+        status.textContent = "Enter a search query.";
+        return;
+      }
+
+      window.location.href = `results-1.html?query=${encodeURIComponent(query)}`;
+    });
+  </script>
+</body>
+</html>
