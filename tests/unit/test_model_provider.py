@@ -16,6 +16,7 @@ from computer_agent.intelligence.model_provider import (
     OllamaProvider,
     _parse_proposal,
 )
+import computer_agent.config as config
 import computer_agent.intelligence.model_provider as model_provider
 
 
@@ -134,7 +135,7 @@ def test_groq_provider_reads_legacy_key_label_without_logging_it(
 ) -> None:
     monkeypatch.delenv("GROQ_API_KEY", raising=False)
     monkeypatch.delenv("GROQ_MODEL", raising=False)
-    monkeypatch.setattr(model_provider, "PROJECT_ROOT", tmp_path)
+    monkeypatch.setattr(config, "PROJECT_ROOT", tmp_path)
     (tmp_path / ".env").write_text(
         "groq key = placeholder-not-a-real-key\n",
         encoding="utf-8",
@@ -174,7 +175,7 @@ def test_groq_provider_requires_a_key_when_env_is_missing(
     tmp_path,
 ) -> None:
     monkeypatch.delenv("GROQ_API_KEY", raising=False)
-    monkeypatch.setattr(model_provider, "PROJECT_ROOT", tmp_path)
+    monkeypatch.setattr(config, "PROJECT_ROOT", tmp_path)
 
     with pytest.raises(ValueError, match="GROQ_API_KEY"):
         GroqProvider()

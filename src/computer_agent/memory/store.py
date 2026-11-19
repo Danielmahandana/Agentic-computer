@@ -38,6 +38,17 @@ class RunSnapshot:
 
 
 @dataclass(frozen=True)
+class RunSummary:
+    run_id: str
+    request: TaskRequest
+    status: RunStatus
+    reason: str | None
+    result: dict[str, object] | None
+    created_at: str
+    updated_at: str
+
+
+@dataclass(frozen=True)
 class VerifiedProcedure:
     name: str
     source_run_id: str
@@ -528,6 +539,71 @@ class SQLiteMemory:
                 ),
             )
 
+    def get_run(self, run_id: str) -> RunSummary:
+        with self._connection() as connection:
+            row = connection.execute(
+                """
+                SELECT run_id, request_json, status, reason, result_json,
+                       created_at, updated_at
+                FROM task_runs WHERE run_id = ?
+                """,
+                (run_id,),
+            ).fetchone()
+        if row is None:
+            raise KeyError(f"Unknown task run {run_id!r}.")
+        return _row_to_run_summary(row)
+
+    def list_runs(self, limit: int = 25) -> tuple[RunSummary, ...]:
+        bounded_limit = max(1, min(limit, 100))
+        with self._connection() as connection:
+            rows = connection.execute(
+                """
+                SELECT run_id, request_json, status, reason, result_json,
+                       created_at, updated_at
+                FROM task_runs
+                ORDER BY updated_at DESC, created_at DESC
+                LIMIT ?
+                """,
+                (bounded_limit,),
+            ).fetchall()
+        return tuple(_row_to_run_summary(row) for row in rows)
+
+    def list_procedures(self) -> tuple[VerifiedProcedure, ...]:
+        with self._connection() as connection:
+            rows = connection.execute(
+                """
+                SELECT name, source_run_id, start_page, actions_json
+                FROM verified_procedures
+                ORDER BY created_at DESC
+                """
+            ).fetchall()
+        return tuple(
+            VerifiedProcedure(
+                name=row["name"],
+                source_run_id=row["source_run_id"],
+                start_page=row["start_page"],
+                actions=tuple(
+                    ProposedAction(**action)
+                    for action in json.loads(row["actions_json"])
+                ),
+            )
+            for row in rows
+        )
+
+    def get_artifact(self, artifact_id: str) -> ArtifactEntry:
+        with self._connection() as connection:
+            row = connection.execute(
+                """
+                SELECT artifact_id, run_id, relative_path, media_type,
+                       size_bytes, sha256
+                FROM artifacts WHERE artifact_id = ?
+                """,
+                (artifact_id,),
+            ).fetchone()
+        if row is None:
+            raise KeyError(f"Unknown artifact {artifact_id!r}.")
+        return ArtifactEntry(**dict(row))
+
     def list_artifacts(self, run_id: str) -> tuple[ArtifactEntry, ...]:
         with self._connection() as connection:
             rows = connection.execute(
@@ -605,6 +681,18 @@ def _deserialize_state(
         records_by_id={record.record_id: record for record in records},
         query_filled=data["query_filled"],
         search_submitted=data["search_submitted"],
+    )
+
+
+def _row_to_run_summary(row: sqlite3.Row) -> RunSummary:
+    return RunSummary(
+        run_id=row["run_id"],
+        request=TaskRequest(**json.loads(row["request_json"])),
+        status=row["status"],
+        reason=row["reason"],
+        result=None if row["result_json"] is None else json.loads(row["result_json"]),
+        created_at=row["created_at"],
+        updated_at=row["updated_at"],
     )
 
 

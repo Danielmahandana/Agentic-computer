@@ -1,9 +1,7 @@
 import asyncio
 import json
 import os
-import re
 from dataclasses import asdict, dataclass
-from pathlib import Path
 from typing import Literal
 from urllib.parse import urlsplit
 
@@ -11,6 +9,7 @@ from groq import AsyncGroq
 
 from computer_agent.agent.planner import PlanningContext
 from computer_agent.agent.task_state import AgentState, ProposedAction
+from computer_agent.config import read_project_env
 
 
 ModelAction = Literal["fill", "click", "extract", "finish"]
@@ -45,7 +44,6 @@ _RESPONSE_SCHEMA = {
     },
     "required": ["action", "target", "role", "reason"],
 }
-PROJECT_ROOT = Path(__file__).resolve().parents[3]
 
 
 @dataclass(frozen=True)
@@ -169,8 +167,9 @@ class GroqProvider:
     ) -> None:
         if not 0 < timeout_seconds <= 60:
             raise ValueError("Model timeout must be greater than 0 and at most 60.")
-        env_file = PROJECT_ROOT / ".env"
-        env_values = _read_groq_env_values(env_file)
+        env_values = read_project_env(
+            {"GROQ_API_KEY", "GROQ_KEY", "GROQ_MODEL"}
+        )
         resolved_key = (
             api_key
             or os.getenv("GROQ_API_KEY")
@@ -273,29 +272,6 @@ def _build_messages(
         {"role": "system", "content": _SYSTEM_PROMPT},
         {"role": "user", "content": user_content},
     ]
-
-
-def _read_groq_env_values(env_file: Path) -> dict[str, str]:
-    values: dict[str, str] = {}
-    if not env_file.is_file():
-        return values
-    for line in env_file.read_text(encoding="utf-8-sig").splitlines():
-        line = line.strip()
-        if not line or line.startswith("#"):
-            continue
-        if line.startswith("export "):
-            line = line[7:].lstrip()
-        name, separator, value = line.partition("=")
-        normalized_name = re.sub(r"\s+", "_", name.strip()).upper()
-        if separator and normalized_name in {"GROQ_API_KEY", "GROQ_KEY", "GROQ_MODEL"}:
-            candidate = value.strip()
-            if len(candidate) >= 2 and candidate[0] == candidate[-1] in {"'", '"'}:
-                candidate = candidate[1:-1]
-            else:
-                candidate = candidate.split("#", 1)[0].strip()
-            if candidate:
-                values[normalized_name] = candidate
-    return values
 
 
 async def _read_response_headers(

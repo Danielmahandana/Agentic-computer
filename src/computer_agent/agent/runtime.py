@@ -73,24 +73,33 @@ async def replay_procedure(
     procedure: VerifiedProcedure,
     request: TaskRequest,
     memory: SQLiteMemory | None = None,
+    run_id: str | None = None,
+    control: TaskControl | None = None,
 ) -> TaskResult:
     if request.start_page != procedure.start_page:
         raise ValueError("Procedure replay must use its verified start page.")
 
-    run_id = str(uuid4()) if memory is not None else None
+    if memory is not None and run_id is None:
+        run_id = str(uuid4())
     state = AgentState(request=request, run_id=run_id)
     if memory is not None and run_id is not None:
         memory.create_run(run_id, request)
 
+    page_url: str | None = None
     try:
         async with asyncio.timeout(request.timeout_seconds):
             async with open_demo_computer(request.start_page) as computer:
                 observation = await computer.observe()
+                page_url = observation.url
                 state.pages_visited.append(observation.url)
                 if memory is not None and run_id is not None:
                     memory.save_progress(run_id, state, observation.url)
+                if control is not None:
+                    control.publish("observation", asdict(observation))
 
                 for saved_action in procedure.actions:
+                    if control is not None:
+                        await control.wait_until_resumed()
                     action = validate_proposal(
                         PlanningContext(state, observation),
                         saved_action,
@@ -101,6 +110,7 @@ async def replay_procedure(
                             "loop_detected",
                             "The verified procedure encountered a pagination loop.",
                             memory,
+                            observation.url,
                         )
                     if len(state.steps) >= request.max_steps:
                         return _finish(
@@ -108,6 +118,7 @@ async def replay_procedure(
                             "step_limit_reached",
                             "The maximum number of actions was reached before completion.",
                             memory,
+                            observation.url,
                         )
 
                     observation, step = await _perform_action(
@@ -116,19 +127,24 @@ async def replay_procedure(
                         action,
                         observation,
                     )
+                    page_url = observation.url
                     state.steps.append(step)
                     if memory is not None and run_id is not None:
                         memory.save_progress(run_id, state, observation.url)
+                    if control is not None:
+                        control.publish("step", asdict(step))
+                        control.publish("observation", asdict(observation))
 
                 reason = verify_completion(state, observation)
-                state.steps.append(
-                    _finish_step(
-                        len(state.steps) + 1,
-                        action=None,
-                        observation=observation,
-                        reason=reason,
-                    )
+                finish_step = _finish_step(
+                    len(state.steps) + 1,
+                    action=None,
+                    observation=observation,
+                    reason=reason,
                 )
+                state.steps.append(finish_step)
+                if control is not None:
+                    control.publish("step", asdict(finish_step))
                 return _finish(
                     state,
                     "completed",
@@ -136,12 +152,21 @@ async def replay_procedure(
                     memory,
                     observation.url,
                 )
+    except TaskStopped:
+        return _finish(
+            state,
+            "terminated",
+            "The procedure replay was terminated at a safe action boundary.",
+            memory,
+            page_url,
+        )
     except TimeoutError:
         return _finish(
             state,
             "timed_out",
             "The procedure replay exceeded its configured time limit.",
             memory,
+            page_url,
         )
 
 

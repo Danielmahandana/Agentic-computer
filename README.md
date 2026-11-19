@@ -26,7 +26,7 @@ Install the Chromium browser when beginning the browser-computer tranche:
 .\.venv\Scripts\python.exe -m playwright install chromium
 ```
 
-The local browser computer, observation engine, bounded task loop, optional local reasoning provider, and M5 persistence foundations are implemented. The control interface and integrations remain future tranches.
+The local browser computer, observation engine, bounded task loop, optional local/hosted reasoning providers, M5 persistence foundations, M6 control API, M7 quarantine export integration, and the connected web frontend are implemented.
 
 ## Run the local agent loop
 
@@ -85,6 +85,26 @@ Start the API from the repository root. It binds to localhost only:
 Open `http://127.0.0.1:8000/docs` for the interactive API reference. Submit a local-fixture task with `POST /tasks`, inspect it with `GET /tasks/{task_id}`, and control it with `POST /tasks/{task_id}/pause`, `/resume`, or `/terminate`. `GET /tasks/{task_id}/events` streams status, browser observations, action steps, and the final result over server-sent events. Set `"planner": "groq"` in the submission body to opt into Groq.
 
 Pause and termination take effect at safe action boundaries: a current browser action is allowed to finish before the agent pauses or stops. The API is an unauthenticated, single-process development interface, so it intentionally listens only on `127.0.0.1`; do not expose it to a network.
+
+## M7 & Web Frontend (`web/`)
+
+The Control API also exposes verified procedure save/replay (`/tasks/{task_id}/save-procedure`, `/procedures`, `/procedures/{name}/replay`), traceable quarantine export (`POST /tasks/{task_id}/export`), and SHA-256 verified artifact inspection (`/tasks/{task_id}/artifacts`, `/artifacts/{artifact_id}`), all mirrored under `/api/*`.
+
+When `web/dist` is built, starting the FastAPI server serves both the API and the React frontend at `http://127.0.0.1:8000/`:
+
+```powershell
+Set-Location web
+npm.cmd run build
+Set-Location ..
+.\.venv\Scripts\python.exe -m computer_agent.api.main
+```
+
+For frontend hot-reload development, run the backend on `127.0.0.1:8000` and Vite on `127.0.0.1:5173` (configured to proxy `/api/*` to the backend):
+
+```powershell
+Set-Location web
+npm.cmd run dev
+```
 
 ## Current learning checkpoints
 

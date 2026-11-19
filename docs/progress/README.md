@@ -75,6 +75,12 @@ This file is the durable status record for the build. Update it at the end of ea
 - **Verification:** `.\.venv\Scripts\python.exe -m pytest -vv` — 33 passed, covering invalid task rejection, observation/result SSE, pause/resume, termination persistence, legacy database migration, and mocked Groq configuration/request behavior. `.\.venv\Scripts\python.exe -m pip check` — no broken requirements.
 - **Next:** M7 — integrations that produce traceable artifacts for approved downstream systems.
 
-## M7
+## M7 — Integrations & connected frontend
 
-Not started. See the roadmap in the root [README](../../README.md).
+- **Status:** Implemented and verified; walkthrough pending
+- **Implementation:**
+  - Added `integrations/adapters.py` with `DownstreamAdapter` and `QuarantineExporter`, packaging completed runs into hash-verified, content-addressed JSON payload and manifest bundles (`quarantine_status: "pending_validation"`) through `ArtifactManager` without platform-specific assumptions in the core.
+  - Extended `SQLiteMemory` (`get_run`, `list_runs`, `list_procedures`, `get_artifact`) and `replay_procedure` (live SSE observations, steps, and safe-boundary pause/resume/terminate).
+  - Expanded the FastAPI control plane (`api/main.py`) with `/api/*` routing alongside root endpoints, CORS for local Vite dev, `GET /tasks`, `POST /tasks/{id}/save-procedure`, `GET /procedures`, `POST /procedures/{name}/replay`, `GET /tasks/{id}/artifacts`, `POST /tasks/{id}/export`, `GET /artifacts/{id}`, and static serving of the built `web/dist` frontend at `/`.
+  - Connected the React + Vite frontend (`web/`) to the full Control API (Vite `/api` proxy, live SSE observation & step stream, pause/resume/terminate controls, recent SQLite runs, verified procedure save & replay, M7 quarantine export & SHA-256 artifact inspector, plus Tavily web research mode).
+- **Verification:** `.\.venv\Scripts\python.exe -m pytest -vv`, `npm.cmd run lint`, `npm.cmd run build`, and `.\.venv\Scripts\python.exe -m pip check` all pass.
