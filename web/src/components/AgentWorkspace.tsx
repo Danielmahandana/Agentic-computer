@@ -18,6 +18,13 @@ import {
   type TaskView,
   type VerifiedProcedure,
 } from '../api'
+import {
+  AgentTerrariumIllustration,
+  QuarantineSealMark,
+  RadarCanopyIllustration,
+} from './Illustrations'
+
+type StageTab = 'trace' | 'records' | 'artifacts'
 
 type AgentWorkspaceProps = {
   selectedTaskId: string | null
@@ -29,15 +36,45 @@ type AgentWorkspaceProps = {
 }
 
 const FIXTURE_SITES = [
-  { value: 'index.html', label: 'Job Portal Fixture (index.html)' },
-  { value: 'library/portal.html', label: 'Reports Library Fixture (library/portal.html)' },
+  { value: 'index.html', label: 'Job Portal (index.html)' },
+  { value: 'library/portal.html', label: 'Reports Library (library/portal.html)' },
 ]
 
 const PLANNERS: Array<{ value: SubmissionPlannerName; label: string; hint: string }> = [
-  { value: 'site-rules', label: 'Site Rules (M3)', hint: 'Deterministic workflow, no model inference' },
-  { value: 'heuristic', label: 'Structural Heuristic (M4)', hint: 'DOM-based reasoning for unfamiliar fixtures' },
-  { value: 'ollama', label: 'Local Ollama (M4)', hint: 'Loopback local model (e.g. qwen2.5-coder:3b)' },
-  { value: 'groq', label: 'Hosted Groq (M4)', hint: 'Requires GROQ_API_KEY in .env' },
+  { value: 'site-rules', label: 'Site Rules (M3)', hint: 'Deterministic workflow, zero inference' },
+  { value: 'heuristic', label: 'Heuristic (M4)', hint: 'Structural DOM reasoning' },
+  { value: 'ollama', label: 'Ollama (M4)', hint: 'Loopback local model' },
+  { value: 'groq', label: 'Groq (M4)', hint: 'Hosted model via .env key' },
+]
+
+const QUICK_PRESETS: Array<{
+  label: string
+  detail: string
+  query: string
+  startPage: string
+  planner: SubmissionPlannerName
+}> = [
+  {
+    label: 'Electrician Jobs',
+    detail: 'M3 Site Rules · Job Portal',
+    query: 'electrician',
+    startPage: 'index.html',
+    planner: 'site-rules',
+  },
+  {
+    label: 'Library Reports',
+    detail: 'M4 Heuristic · Unfamiliar Site',
+    query: 'electrician',
+    startPage: 'library/portal.html',
+    planner: 'heuristic',
+  },
+  {
+    label: 'Step-Limited Run',
+    detail: 'M5 Checkpoint · 1 Step',
+    query: 'electrician',
+    startPage: 'index.html',
+    planner: 'site-rules',
+  },
 ]
 
 const ACTIVE_STATUSES = new Set(['running', 'pausing', 'paused', 'stopping'])
@@ -57,6 +94,7 @@ export function AgentWorkspace({
   const [maxSteps, setMaxSteps] = useState(12)
   const [timeoutSeconds, setTimeoutSeconds] = useState(30)
 
+  const [stageTab, setStageTab] = useState<StageTab>('trace')
   const [submitting, setSubmitting] = useState(false)
   const [controlBusy, setControlBusy] = useState(false)
   const [error, setError] = useState('')
@@ -104,6 +142,7 @@ export function AgentWorkspace({
     setNotice('')
     setInspectedArtifact(null)
     setLastExport(null)
+    setStageTab('trace')
 
     async function loadTask(taskId: string) {
       try {
@@ -219,23 +258,29 @@ export function AgentWorkspace({
     })
   }
 
-  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault()
-    if (!query.trim() || submitting) return
-
+  async function launchTask(params: {
+    query: string
+    startPage: string
+    planner: SubmissionPlannerName
+    model?: string
+    maxSteps: number
+    timeoutSeconds: number
+  }) {
+    if (!params.query.trim() || submitting) return
     setSubmitting(true)
     setError('')
     setNotice('')
     setLastExport(null)
     setInspectedArtifact(null)
+    setStageTab('trace')
     try {
       const created = await submitTask({
-        query,
-        start_page: startPage,
-        planner,
-        model: planner === 'ollama' || planner === 'groq' ? model : undefined,
-        max_steps: maxSteps,
-        timeout_seconds: timeoutSeconds,
+        query: params.query,
+        start_page: params.startPage,
+        planner: params.planner,
+        model: params.planner === 'ollama' || params.planner === 'groq' ? params.model : undefined,
+        max_steps: params.maxSteps,
+        timeout_seconds: params.timeoutSeconds,
       })
       setActiveTask(created)
       setLiveObservation(created.latest_observation)
@@ -249,6 +294,18 @@ export function AgentWorkspace({
     } finally {
       setSubmitting(false)
     }
+  }
+
+  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    void launchTask({
+      query,
+      startPage,
+      planner,
+      model,
+      maxSteps,
+      timeoutSeconds,
+    })
   }
 
   async function handleControl(action: 'pause' | 'resume' | 'terminate') {
@@ -289,6 +346,7 @@ export function AgentWorkspace({
     setReplayingName(name)
     setError('')
     setNotice('')
+    setStageTab('trace')
     try {
       const created = await replayProcedure(name, replayQuery, maxSteps, timeoutSeconds)
       setActiveTask(created)
@@ -314,10 +372,11 @@ export function AgentWorkspace({
       const exported = await exportTaskQuarantine(activeTask.task_id, exportDestination)
       setLastExport(exported)
       setNotice(
-        `Exported ${exported.record_count} record(s) to "${exported.destination}" (status: ${exported.quarantine_status}).`,
+        `Exported ${exported.record_count} record(s) to "${exported.destination}" (${exported.quarantine_status}).`,
       )
       const artifactList = await listTaskArtifacts(activeTask.task_id)
       setArtifacts(artifactList)
+      setStageTab('artifacts')
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Failed to export quarantine bundle.')
     } finally {
@@ -343,36 +402,39 @@ export function AgentWorkspace({
     displayedSteps.reduce((sum, step) => sum + (step.duration_ms || 0), 0),
   )
 
-  return (
-    <div className="agent-workspace">
-      <section className="agent-card launch-card">
-        <div className="card-header">
-          <div>
-            <p className="section-label">COMPUTER AGENT CONTROL PLANE</p>
-            <h1 className="agent-heading">Run a bounded browser task</h1>
-          </div>
-          <span className={`api-pill ${apiConnected ? 'online' : 'offline'}`}>
-            <i />
-            {apiConnected ? 'Control API connected' : 'Control API offline'}
-          </span>
-        </div>
+  const tabIndex = stageTab === 'trace' ? 0 : stageTab === 'records' ? 1 : 2
 
-        <form className="task-form" onSubmit={handleSubmit}>
-          <div className="form-grid">
+  return (
+    <div className="agent-bento">
+      {/* Left Rail: Compact Launch Controls + Verified Procedures */}
+      <div className="agent-rail">
+        <section className="agent-card launch-card">
+          <div className="card-header compact">
+            <div>
+              <p className="section-label">CONTROL PLANE</p>
+              <h1 className="agent-heading">New browser task</h1>
+            </div>
+            <span className={`api-pill ${apiConnected ? 'online' : 'offline'}`}>
+              <i />
+              {apiConnected ? 'Online' : 'Offline'}
+            </span>
+          </div>
+
+          <form className="task-form" onSubmit={handleSubmit}>
             <label className="field">
               <span>Search query</span>
               <input
                 type="text"
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
-                placeholder="e.g. electrician, safety, welder"
+                placeholder="e.g. electrician, safety"
                 maxLength={100}
                 required
               />
             </label>
 
             <label className="field">
-              <span>Target fixture site</span>
+              <span>Fixture site</span>
               <select value={startPage} onChange={(e) => setStartPage(e.target.value)}>
                 {FIXTURE_SITES.map((site) => (
                   <option key={site.value} value={site.value}>
@@ -382,23 +444,47 @@ export function AgentWorkspace({
               </select>
             </label>
 
-            <label className="field">
-              <span>Planner</span>
-              <select
-                value={planner}
-                onChange={(e) => setPlanner(e.target.value as SubmissionPlannerName)}
-              >
-                {PLANNERS.map((item) => (
-                  <option key={item.value} value={item.value}>
-                    {item.label}
-                  </option>
-                ))}
-              </select>
-            </label>
+            <div className="field-row">
+              <label className="field">
+                <span>Planner</span>
+                <select
+                  value={planner}
+                  onChange={(e) => setPlanner(e.target.value as SubmissionPlannerName)}
+                >
+                  {PLANNERS.map((item) => (
+                    <option key={item.value} value={item.value}>
+                      {item.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="field field-mini">
+                <span>Steps</span>
+                <input
+                  type="number"
+                  min={1}
+                  max={20}
+                  value={maxSteps}
+                  onChange={(e) => setMaxSteps(Number(e.target.value) || 12)}
+                />
+              </label>
+
+              <label className="field field-mini">
+                <span>Sec</span>
+                <input
+                  type="number"
+                  min={5}
+                  max={60}
+                  value={timeoutSeconds}
+                  onChange={(e) => setTimeoutSeconds(Number(e.target.value) || 30)}
+                />
+              </label>
+            </div>
 
             {(planner === 'ollama' || planner === 'groq') && (
               <label className="field">
-                <span>Model override (optional)</span>
+                <span>Model override</span>
                 <input
                   type="text"
                   value={model}
@@ -408,331 +494,387 @@ export function AgentWorkspace({
               </label>
             )}
 
-            <label className="field field-compact">
-              <span>Max steps (1–20)</span>
-              <input
-                type="number"
-                min={1}
-                max={20}
-                value={maxSteps}
-                onChange={(e) => setMaxSteps(Number(e.target.value) || 12)}
-              />
-            </label>
-
-            <label className="field field-compact">
-              <span>Timeout (s)</span>
-              <input
-                type="number"
-                min={5}
-                max={60}
-                value={timeoutSeconds}
-                onChange={(e) => setTimeoutSeconds(Number(e.target.value) || 30)}
-              />
-            </label>
-          </div>
-
-          <div className="form-footer">
-            <span className="planner-hint">
-              {PLANNERS.find((item) => item.value === planner)?.hint}
-            </span>
             <button
               type="submit"
-              className="primary-btn"
+              className="primary-btn launch-btn"
               disabled={submitting || !query.trim() || !apiConnected}
             >
-              {submitting ? 'Launching Chromium…' : 'Run browser task'}
+              {submitting ? 'Launching Chromium…' : 'Launch browser agent'}
             </button>
-          </div>
-        </form>
-      </section>
+          </form>
+        </section>
 
-      {error && (
-        <div className="error-note" role="alert">
-          <span className="error-asterisk" aria-hidden="true">✳</span>
-          <p>{error}</p>
-        </div>
-      )}
-
-      {notice && (
-        <div className="notice-note" role="status">
-          <span aria-hidden="true">✓</span>
-          <p>{notice}</p>
-        </div>
-      )}
-
-      {activeTask && (
-        <section className="agent-card monitor-card">
-          <div className="card-header">
-            <div>
-              <p className="section-label">ACTIVE RUN · {activeTask.task_id.slice(0, 8)}</p>
-              <h2 className="run-title">
-                “{activeTask.query}”
-                <span className="run-meta">
-                  {activeTask.planner} · {activeTask.start_page ?? 'index.html'}
-                </span>
-              </h2>
-            </div>
-            <div className="run-controls">
-              <span className={`status-badge status-${activeTask.status}`}>
-                {activeTask.status.replaceAll('_', ' ')}
-              </span>
-              {isTaskActive && (
-                <>
-                  {activeTask.status === 'paused' || activeTask.status === 'pausing' ? (
-                    <button
-                      type="button"
-                      className="secondary-btn"
-                      onClick={() => void handleControl('resume')}
-                      disabled={controlBusy}
-                    >
-                      Resume
-                    </button>
-                  ) : (
-                    <button
-                      type="button"
-                      className="secondary-btn"
-                      onClick={() => void handleControl('pause')}
-                      disabled={controlBusy || activeTask.status === 'stopping'}
-                    >
-                      Pause
-                    </button>
-                  )}
-                  <button
-                    type="button"
-                    className="danger-btn"
-                    onClick={() => void handleControl('terminate')}
-                    disabled={controlBusy || activeTask.status === 'stopping'}
-                  >
-                    Terminate
-                  </button>
-                </>
-              )}
-            </div>
-          </div>
-
-          {activeTask.result && (
-            <div className="result-summary">
+        <section className="agent-card procedures-card">
+          <div className="card-header compact">
+            <div className="title-with-seal">
+              <QuarantineSealMark />
               <div>
-                <span className="summary-label">Outcome</span>
-                <strong>{activeTask.result.reason}</strong>
+                <p className="section-label">M5 VERIFIED REPLAY</p>
+                <h2 className="rail-title">Procedures ({procedures.length})</h2>
               </div>
-              <div className="summary-metrics">
-                <span>{activeTask.result.records.length} records</span>
-                <span>{activeTask.result.steps.length} steps</span>
-                <span>{activeTask.result.pages_visited.length} pages</span>
-                <span>{totalDurationMs} ms</span>
-              </div>
-            </div>
-          )}
-
-          {liveObservation && (
-            <div className="subsection">
-              <p className="section-label">LIVE BROWSER OBSERVATION</p>
-              <div className="observation-box">
-                <div className="obs-header">
-                  <strong>{liveObservation.title || 'Untitled page'}</strong>
-                  <span className="obs-count">{liveObservation.record_count} records on page</span>
-                </div>
-                <p className="obs-url">{liveObservation.url}</p>
-                {liveObservation.status_text && (
-                  <p className="obs-status">Status: {liveObservation.status_text}</p>
-                )}
-                {liveObservation.interactive_elements.length > 0 && (
-                  <div className="control-chips">
-                    {liveObservation.interactive_elements.map((el, idx) => (
-                      <span
-                        key={`${el.role}-${el.accessible_name}-${idx}`}
-                        className={`control-chip ${el.disabled ? 'is-disabled' : ''}`}
-                      >
-                        <em>{el.role}</em> {el.accessible_name || `<${el.tag}>`}
-                      </span>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-
-          <div className="monitor-columns">
-            <div className="subsection">
-              <p className="section-label">ACTION TRACE ({displayedSteps.length})</p>
-              {displayedSteps.length === 0 ? (
-                <p className="empty-copy">Waiting for the browser agent to take its first step…</p>
-              ) : (
-                <ol className="step-list">
-                  {displayedSteps.map((step) => (
-                    <li key={step.number} className="step-item">
-                      <div className="step-top">
-                        <span className="step-num">#{step.number}</span>
-                        <span className="step-action">{step.action}</span>
-                        <span className="step-target">{step.target}</span>
-                        <span className="step-verify ok">verified</span>
-                        <span className="step-ms">{Math.round(step.duration_ms)}ms</span>
-                      </div>
-                      {step.reasoning && <p className="step-reason">{step.reasoning}</p>}
-                      {step.result && <p className="step-detail">{step.result}</p>}
-                    </li>
-                  ))}
-                </ol>
-              )}
-            </div>
-
-            <div className="subsection">
-              <p className="section-label">ACQUIRED RECORDS ({matchingRecords.length})</p>
-              {matchingRecords.length === 0 ? (
-                <p className="empty-copy">
-                  {isTaskActive
-                    ? 'Matching records will appear once extraction completes.'
-                    : 'No matching records were extracted for this query.'}
-                </p>
-              ) : (
-                <ul className="record-list">
-                  {matchingRecords.map((record) => (
-                    <li key={record.record_id} className="record-item">
-                      <div className="record-top">
-                        <strong>{record.title}</strong>
-                        <span className="record-id">{record.record_id}</span>
-                      </div>
-                      <p>{record.description}</p>
-                    </li>
-                  ))}
-                </ul>
-              )}
             </div>
           </div>
 
-          {isTaskCompleted && (
-            <div className="post-run-actions">
-              <form className="inline-action-form" onSubmit={handleSaveProcedure}>
-                <label className="sr-only" htmlFor="procedure-name">Procedure name</label>
-                <input
-                  id="procedure-name"
-                  type="text"
-                  value={procedureName}
-                  onChange={(e) => setProcedureName(e.target.value)}
-                  placeholder="Save as verified procedure (e.g. local-electrician)"
-                  maxLength={100}
-                />
-                <button
-                  type="submit"
-                  className="secondary-btn"
-                  disabled={savingProcedure || !procedureName.trim()}
-                >
-                  {savingProcedure ? 'Saving…' : 'Save procedure'}
-                </button>
-              </form>
+          <div className="replay-query-inline">
+            <input
+              type="text"
+              value={replayQuery}
+              onChange={(e) => setReplayQuery(e.target.value)}
+              placeholder="Replay query…"
+              maxLength={100}
+              aria-label="Replay query"
+            />
+          </div>
 
-              <div className="inline-action-form">
-                <label className="sr-only" htmlFor="export-dest">Quarantine destination</label>
-                <input
-                  id="export-dest"
-                  type="text"
-                  value={exportDestination}
-                  onChange={(e) => setExportDestination(e.target.value)}
-                  placeholder="quarantine-gateway"
-                  maxLength={64}
-                />
-                <button
-                  type="button"
-                  className="primary-btn"
-                  onClick={() => void handleExportQuarantine()}
-                  disabled={exporting}
-                >
-                  {exporting ? 'Exporting…' : 'Export to Quarantine (M7)'}
-                </button>
-              </div>
-            </div>
-          )}
-
-          {(artifacts.length > 0 || lastExport) && (
-            <div className="subsection">
-              <p className="section-label">TRACEABLE ARTIFACTS & QUARANTINE BUNDLES ({artifacts.length})</p>
-              <ul className="artifact-list">
-                {artifacts.map((artifact) => (
-                  <li key={artifact.artifact_id} className="artifact-item">
-                    <div>
-                      <strong>{artifact.relative_path}</strong>
+          <div className="rail-scroll">
+            {procedures.length === 0 ? (
+              <p className="empty-copy">
+                Save a completed run to replay it deterministically without inference.
+              </p>
+            ) : (
+              <ul className="procedure-list">
+                {procedures.map((proc) => (
+                  <li key={proc.name} className="procedure-item">
+                    <div className="proc-info">
+                      <strong>{proc.name}</strong>
                       <span className="artifact-meta">
-                        {artifact.media_type} · {artifact.size_bytes} bytes · sha256:{artifact.sha256.slice(0, 12)}…
+                        {proc.start_page} · {proc.action_count} actions
                       </span>
                     </div>
                     <button
                       type="button"
-                      className="secondary-btn"
-                      onClick={() => void handleInspectArtifact(artifact.artifact_id)}
+                      className="pill-btn"
+                      disabled={replayingName === proc.name || !replayQuery.trim() || !apiConnected}
+                      onClick={() => void handleReplay(proc.name)}
                     >
-                      Verify & inspect
+                      {replayingName === proc.name ? '…' : 'Replay'}
                     </button>
                   </li>
                 ))}
               </ul>
+            )}
+          </div>
+        </section>
+      </div>
 
-              {inspectedArtifact && (
-                <div className="artifact-viewer">
-                  <div className="artifact-viewer-header">
-                    <span>
-                      Verified SHA-256: <code>{inspectedArtifact.artifact.sha256}</code>
-                    </span>
+      {/* Right Stage: Illustrated Idle Hero OR Live Tabbed Run Monitor */}
+      <section className="agent-card stage-card">
+        {error && (
+          <div className="toast-banner toast-error" role="alert">
+            <span>✳ {error}</span>
+            <button type="button" className="text-btn" onClick={() => setError('')}>✕</button>
+          </div>
+        )}
+        {notice && (
+          <div className="toast-banner toast-ok" role="status">
+            <span>✓ {notice}</span>
+            <button type="button" className="text-btn" onClick={() => setNotice('')}>✕</button>
+          </div>
+        )}
+
+        {!activeTask ? (
+          <div className="stage-idle" key="stage-idle">
+            <div className="stage-art-wrap">
+              <AgentTerrariumIllustration />
+            </div>
+            <div className="stage-idle-copy">
+              <span className="idle-kicker">OBSERVE · DECIDE · ACT · VERIFY</span>
+              <h2>A quiet, supervised browser computer.</h2>
+              <p>
+                Launch a bounded Playwright session to inspect semantic controls, follow
+                paginated results, save reusable procedures, and seal verified outputs for quarantine.
+              </p>
+            </div>
+            <div className="preset-grid">
+              {QUICK_PRESETS.map((preset) => (
+                <button
+                  key={preset.label}
+                  type="button"
+                  className="preset-pill-card"
+                  disabled={submitting || !apiConnected}
+                  onClick={() => {
+                    setQuery(preset.query)
+                    setStartPage(preset.startPage)
+                    setPlanner(preset.planner)
+                    const steps = preset.label === 'Step-Limited Run' ? 1 : 12
+                    setMaxSteps(steps)
+                    void launchTask({
+                      query: preset.query,
+                      startPage: preset.startPage,
+                      planner: preset.planner,
+                      maxSteps: steps,
+                      timeoutSeconds,
+                    })
+                  }}
+                >
+                  <strong>{preset.label}</strong>
+                  <span>{preset.detail}</span>
+                  <i aria-hidden="true">↗</i>
+                </button>
+              ))}
+            </div>
+          </div>
+        ) : (
+          <div className="stage-active" key={activeTask.task_id}>
+            <div className="stage-run-header">
+              <div className="run-title-group">
+                {isTaskActive && <RadarCanopyIllustration />}
+                <div>
+                  <p className="section-label">
+                    RUN {activeTask.task_id.slice(0, 8)} · {activeTask.planner} · {activeTask.start_page ?? 'index.html'}
+                  </p>
+                  <h2 className="run-title">“{activeTask.query}”</h2>
+                </div>
+              </div>
+
+              <div className="run-controls">
+                <span className={`status-badge status-${activeTask.status}`}>
+                  {activeTask.status.replaceAll('_', ' ')}
+                </span>
+                {isTaskActive && (
+                  <>
+                    {activeTask.status === 'paused' || activeTask.status === 'pausing' ? (
+                      <button
+                        type="button"
+                        className="pill-btn"
+                        onClick={() => void handleControl('resume')}
+                        disabled={controlBusy}
+                      >
+                        Resume
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        className="pill-btn"
+                        onClick={() => void handleControl('pause')}
+                        disabled={controlBusy || activeTask.status === 'stopping'}
+                      >
+                        Pause
+                      </button>
+                    )}
                     <button
                       type="button"
-                      className="text-btn"
-                      onClick={() => setInspectedArtifact(null)}
+                      className="pill-btn danger"
+                      onClick={() => void handleControl('terminate')}
+                      disabled={controlBusy || activeTask.status === 'stopping'}
                     >
-                      Close
+                      Terminate
                     </button>
-                  </div>
-                  <pre>{inspectedArtifact.content}</pre>
+                  </>
+                )}
+              </div>
+            </div>
+
+            {activeTask.result && (
+              <div className="metric-strip">
+                <span className="metric-reason">{activeTask.result.reason}</span>
+                <div className="metric-pills">
+                  <span>{activeTask.result.records.length} records</span>
+                  <span>{activeTask.result.steps.length} steps</span>
+                  <span>{activeTask.result.pages_visited.length} pages</span>
+                  <span>{totalDurationMs} ms</span>
+                </div>
+              </div>
+            )}
+
+            {/* Sliding pill sub-tabs */}
+            <div className="stage-tabs" role="tablist" aria-label="Run inspection tabs">
+              <span
+                className="stage-tab-slider"
+                style={{ transform: `translateX(${tabIndex * 100}%)` }}
+                aria-hidden="true"
+              />
+              <button
+                type="button"
+                role="tab"
+                aria-selected={stageTab === 'trace'}
+                className={stageTab === 'trace' ? 'active' : ''}
+                onClick={() => setStageTab('trace')}
+              >
+                Live &amp; Trace ({displayedSteps.length})
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={stageTab === 'records'}
+                className={stageTab === 'records' ? 'active' : ''}
+                onClick={() => setStageTab('records')}
+              >
+                Records ({matchingRecords.length})
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={stageTab === 'artifacts'}
+                className={stageTab === 'artifacts' ? 'active' : ''}
+                onClick={() => setStageTab('artifacts')}
+              >
+                Artifacts &amp; M7 ({artifacts.length})
+              </button>
+            </div>
+
+            {/* Tab Panel Body (internally scrollable, never scrolls outer viewport) */}
+            <div className="stage-panel-body" key={stageTab}>
+              {stageTab === 'trace' && (
+                <div className="panel-swap">
+                  {liveObservation && (
+                    <div className="observation-box">
+                      <div className="obs-header">
+                        <strong>{liveObservation.title || 'Untitled page'}</strong>
+                        <span className="obs-count">{liveObservation.record_count} records on page</span>
+                      </div>
+                      <p className="obs-url">{liveObservation.url}</p>
+                      {liveObservation.interactive_elements.length > 0 && (
+                        <div className="control-chips">
+                          {liveObservation.interactive_elements.map((el, idx) => (
+                            <span
+                              key={`${el.role}-${el.accessible_name}-${idx}`}
+                              className={`control-chip ${el.disabled ? 'is-disabled' : ''}`}
+                            >
+                              <em>{el.role ?? el.tag}</em> {el.accessible_name || `<${el.tag}>`}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {displayedSteps.length === 0 ? (
+                    <p className="empty-copy">Waiting for the browser agent to take its first step…</p>
+                  ) : (
+                    <ol className="step-list">
+                      {displayedSteps.map((step) => (
+                        <li key={step.number} className="step-item item-pop">
+                          <div className="step-top">
+                            <span className="step-num">#{step.number}</span>
+                            <span className="step-action">{step.action}</span>
+                            <span className="step-target">{step.target}</span>
+                            <span className="step-verify ok">verified</span>
+                            <span className="step-ms">{Math.round(step.duration_ms)}ms</span>
+                          </div>
+                          {step.reasoning && <p className="step-reason">{step.reasoning}</p>}
+                          {step.result && <p className="step-detail">{step.result}</p>}
+                        </li>
+                      ))}
+                    </ol>
+                  )}
+                </div>
+              )}
+
+              {stageTab === 'records' && (
+                <div className="panel-swap">
+                  {matchingRecords.length === 0 ? (
+                    <p className="empty-copy">
+                      {isTaskActive
+                        ? 'Matching records will appear as the agent extracts pages.'
+                        : 'No matching records were extracted for this query.'}
+                    </p>
+                  ) : (
+                    <ul className="record-list">
+                      {matchingRecords.map((record) => (
+                        <li key={record.record_id} className="record-item item-pop">
+                          <div className="record-top">
+                            <strong>{record.title}</strong>
+                            <span className="record-id">{record.record_id}</span>
+                          </div>
+                          <p>{record.description}</p>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              )}
+
+              {stageTab === 'artifacts' && (
+                <div className="panel-swap">
+                  {isTaskCompleted && (
+                    <div className="post-run-actions">
+                      <form className="inline-action-form" onSubmit={handleSaveProcedure}>
+                        <input
+                          type="text"
+                          value={procedureName}
+                          onChange={(e) => setProcedureName(e.target.value)}
+                          placeholder="Save as verified procedure…"
+                          maxLength={100}
+                        />
+                        <button
+                          type="submit"
+                          className="pill-btn"
+                          disabled={savingProcedure || !procedureName.trim()}
+                        >
+                          {savingProcedure ? 'Saving…' : 'Save'}
+                        </button>
+                      </form>
+
+                      <div className="inline-action-form">
+                        <input
+                          type="text"
+                          value={exportDestination}
+                          onChange={(e) => setExportDestination(e.target.value)}
+                          placeholder="quarantine-gateway"
+                          maxLength={64}
+                        />
+                        <button
+                          type="button"
+                          className="primary-btn"
+                          onClick={() => void handleExportQuarantine()}
+                          disabled={exporting}
+                        >
+                          {exporting ? 'Sealing…' : 'Export Quarantine'}
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {artifacts.length === 0 && !lastExport ? (
+                    <p className="empty-copy">
+                      {isTaskCompleted
+                        ? 'Click “Export Quarantine” to generate a SHA-256 verified payload and manifest bundle.'
+                        : 'Complete a task run to generate traceable quarantine artifacts.'}
+                    </p>
+                  ) : (
+                    <ul className="artifact-list">
+                      {artifacts.map((artifact) => (
+                        <li key={artifact.artifact_id} className="artifact-item item-pop">
+                          <div>
+                            <strong>{artifact.relative_path}</strong>
+                            <span className="artifact-meta">
+                              {artifact.media_type} · {artifact.size_bytes} B · sha256:{artifact.sha256.slice(0, 12)}…
+                            </span>
+                          </div>
+                          <button
+                            type="button"
+                            className="pill-btn"
+                            onClick={() => void handleInspectArtifact(artifact.artifact_id)}
+                          >
+                            Verify &amp; inspect
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+
+                  {inspectedArtifact && (
+                    <div className="artifact-viewer item-pop">
+                      <div className="artifact-viewer-header">
+                        <span>
+                          Verified SHA-256: <code>{inspectedArtifact.artifact.sha256}</code>
+                        </span>
+                        <button
+                          type="button"
+                          className="text-btn"
+                          onClick={() => setInspectedArtifact(null)}
+                        >
+                          Close
+                        </button>
+                      </div>
+                      <pre>{inspectedArtifact.content}</pre>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
-          )}
-        </section>
-      )}
-
-      <section className="agent-card procedures-card">
-        <div className="card-header">
-          <div>
-            <p className="section-label">VERIFIED PROCEDURES (M5 REPLAY)</p>
-            <h2 className="run-title">Deterministic replay without inference</h2>
           </div>
-          <div className="replay-query-box">
-            <label htmlFor="replay-query">Replay query:</label>
-            <input
-              id="replay-query"
-              type="text"
-              value={replayQuery}
-              onChange={(e) => setReplayQuery(e.target.value)}
-              placeholder="electrician"
-              maxLength={100}
-            />
-          </div>
-        </div>
-
-        {procedures.length === 0 ? (
-          <p className="empty-copy">
-            Complete a browser task above and save it as a verified procedure to replay it deterministically.
-          </p>
-        ) : (
-          <ul className="procedure-list">
-            {procedures.map((proc) => (
-              <li key={proc.name} className="procedure-item">
-                <div>
-                  <strong>{proc.name}</strong>
-                  <span className="artifact-meta">
-                    {proc.start_page} · {proc.action_count} actions · source {proc.source_run_id.slice(0, 8)}
-                  </span>
-                </div>
-                <button
-                  type="button"
-                  className="secondary-btn"
-                  disabled={replayingName === proc.name || !replayQuery.trim() || !apiConnected}
-                  onClick={() => void handleReplay(proc.name)}
-                >
-                  {replayingName === proc.name ? 'Replaying…' : 'Replay'}
-                </button>
-              </li>
-            ))}
-          </ul>
         )}
       </section>
     </div>
