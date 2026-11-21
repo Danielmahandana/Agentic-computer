@@ -1,3 +1,4 @@
+from base64 import b64encode
 from dataclasses import dataclass
 from pathlib import Path
 from time import perf_counter
@@ -142,6 +143,11 @@ class BrowserActions:
         image = await self._page.screenshot()
         self._record("screenshot", "page", started_at)
         return image
+
+    async def capture_frame(self) -> str:
+        raw = await self._page.screenshot(type="jpeg", quality=75)
+        encoded = b64encode(raw).decode("ascii")
+        return f"data:image/jpeg;base64,{encoded}"
 
     def _record(
         self,

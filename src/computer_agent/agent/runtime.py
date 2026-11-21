@@ -96,6 +96,7 @@ async def replay_procedure(
                     memory.save_progress(run_id, state, observation.url)
                 if control is not None:
                     control.publish("observation", asdict(observation))
+                    await _publish_frame(computer, control, observation)
 
                 for saved_action in procedure.actions:
                     if control is not None:
@@ -134,6 +135,7 @@ async def replay_procedure(
                     if control is not None:
                         control.publish("step", asdict(step))
                         control.publish("observation", asdict(observation))
+                        await _publish_frame(computer, control, observation, step)
 
                 reason = verify_completion(state, observation)
                 finish_step = _finish_step(
@@ -192,6 +194,7 @@ async def _execute_task(
                     memory.save_progress(state.run_id, state, observation.url)
                 if control is not None:
                     control.publish("observation", asdict(observation))
+                    await _publish_frame(computer, control, observation)
 
                 while True:
                     if control is not None:
@@ -262,6 +265,7 @@ async def _execute_task(
                     if control is not None:
                         control.publish("step", asdict(step))
                         control.publish("observation", asdict(observation))
+                        await _publish_frame(computer, control, observation, step)
     except TaskStopped:
         return _finish(
             state,
@@ -277,6 +281,30 @@ async def _execute_task(
             "The task exceeded its configured time limit.",
             memory,
         )
+
+
+async def _publish_frame(
+    computer: BrowserActions,
+    control: TaskControl,
+    observation: PageObservation,
+    step: TaskStep | None = None,
+) -> None:
+    try:
+        image = await computer.capture_frame()
+    except Exception:
+        return
+    control.publish(
+        "frame",
+        {
+            "step_number": 0 if step is None else step.number,
+            "action": "navigate" if step is None else step.action,
+            "target": observation.title or "start page" if step is None else step.target,
+            "result": "Opened page" if step is None else step.result,
+            "url": observation.url,
+            "title": observation.title,
+            "image": image,
+        },
+    )
 
 
 async def _perform_action(

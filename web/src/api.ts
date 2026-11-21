@@ -50,6 +50,16 @@ export type TaskResult = {
   run_id: string | null
 }
 
+export type BrowserFrame = {
+  step_number: number
+  action: string
+  target: string
+  result: string
+  url: string
+  title: string
+  image: string
+}
+
 export type TaskView = {
   task_id: string
   status: string
@@ -57,6 +67,8 @@ export type TaskView = {
   start_page?: string
   planner: PlannerName
   latest_observation: PageObservation | null
+  latest_frame?: BrowserFrame | null
+  frames?: BrowserFrame[]
   result: TaskResult | null
   error: string | null
   created_at?: string

@@ -45,6 +45,8 @@ function App() {
   const [draft, setDraft] = useState('')
   const [recentSearches, setRecentSearches] = useState<string[]>([])
   const [isSearching, setIsSearching] = useState(false)
+  const [activeResearchQuery, setActiveResearchQuery] = useState('')
+  const [activeSourceIndex, setActiveSourceIndex] = useState(0)
   const [error, setError] = useState('')
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const endOfConversation = useRef<HTMLDivElement>(null)
@@ -102,6 +104,8 @@ function App() {
 
     setError('')
     setDraft('')
+    setActiveResearchQuery(cleanQuery)
+    setActiveSourceIndex(0)
     setIsSearching(true)
     setMessages((current) => [...current, {
       id: crypto.randomUUID(),
@@ -293,26 +297,14 @@ function App() {
       </aside>
 
       <main className="conversation">
-        <header className="topbar">
-          <button
-            type="button"
-            className="mobile-menu"
-            aria-label="Open notebook"
-            onClick={() => setSidebarOpen(true)}
-          >
-            <SeedlingMark />
-          </button>
-          <div className="topbar-context">
-            <span className="context-kicker">
-              {mode === 'agent' ? 'SUPERVISED BROWSER RUNTIME' : 'A QUIET PLACE TO LOOK CLOSER'}
-            </span>
-            <span className="context-divider" />
-            <span className="context-source">
-              {mode === 'agent' ? 'Playwright · SQLite · Quarantine Export' : 'Web research · Tavily'}
-            </span>
-          </div>
-          <span className="about-pill">127.0.0.1 · M1–M7</span>
-        </header>
+        <button
+          type="button"
+          className="mobile-menu"
+          aria-label="Open notebook"
+          onClick={() => setSidebarOpen(true)}
+        >
+          <SeedlingMark />
+        </button>
 
         <div className="mode-stage" key={mode}>
           {mode === 'agent' ? (
@@ -363,6 +355,115 @@ function App() {
                   </div>
                 ) : (
                   <div className="message-list" aria-live="polite">
+                    {(() => {
+                      const latestAssistant = [...messages]
+                        .reverse()
+                        .find((m): m is Extract<Message, { role: 'assistant' }> => m.role === 'assistant')
+                      const researchResults = latestAssistant?.results ?? []
+                      const clampedIdx =
+                        researchResults.length > 0
+                          ? Math.min(activeSourceIndex, researchResults.length - 1)
+                          : -1
+                      const currentSource = clampedIdx >= 0 ? researchResults[clampedIdx] : null
+                      const browserUrl = isSearching
+                        ? `https://search.web/?q=${encodeURIComponent(activeResearchQuery)}`
+                        : currentSource?.url ?? 'about:blank'
+
+                      return (
+                        <div className="computer-viewport research-browser-viewport">
+                          <div className="computer-chrome">
+                            <div className="computer-dots" aria-hidden="true">
+                              <span />
+                              <span />
+                              <span />
+                            </div>
+                            <div className="computer-address" title={browserUrl}>
+                              {browserUrl}
+                            </div>
+                            <div className="computer-scrubber">
+                              {isSearching && (
+                                <span className="live-dot-pill">
+                                  <i />
+                                  LIVE
+                                </span>
+                              )}
+                              {researchResults.length > 0 && (
+                                <>
+                                  <button
+                                    type="button"
+                                    className="scrubber-btn"
+                                    disabled={clampedIdx <= 0}
+                                    onClick={() => setActiveSourceIndex(Math.max(0, clampedIdx - 1))}
+                                    aria-label="Previous source"
+                                  >
+                                    ◀
+                                  </button>
+                                  <span className="scrubber-count">
+                                    {clampedIdx + 1} / {researchResults.length}
+                                  </span>
+                                  <button
+                                    type="button"
+                                    className="scrubber-btn"
+                                    disabled={clampedIdx >= researchResults.length - 1}
+                                    onClick={() =>
+                                      setActiveSourceIndex(Math.min(researchResults.length - 1, clampedIdx + 1))
+                                    }
+                                    aria-label="Next source"
+                                  >
+                                    ▶
+                                  </button>
+                                </>
+                              )}
+                            </div>
+                          </div>
+
+                          <div className="computer-screen research-browser-screen">
+                            {isSearching ? (
+                              <div className="computer-screen-empty">
+                                <p className="research-browser-status">
+                                  Agent is browsing the web for “{activeResearchQuery}”…
+                                </p>
+                                <span>Querying sources and extracting relevant passages</span>
+                              </div>
+                            ) : currentSource ? (
+                              <div className="research-browser-page">
+                                <div className="research-browser-meta">
+                                  <span className="research-browser-domain">{currentSource.domain}</span>
+                                  <a
+                                    href={currentSource.url}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="scrubber-btn"
+                                  >
+                                    Open tab ↗
+                                  </a>
+                                </div>
+                                <h3 className="research-browser-title">{currentSource.title}</h3>
+                                <p className="research-browser-snippet">{currentSource.snippet}</p>
+                              </div>
+                            ) : (
+                              <div className="computer-screen-empty">
+                                <span>No browser source loaded yet.</span>
+                              </div>
+                            )}
+                          </div>
+
+                          <div className="computer-action-bar">
+                            <span className="step-num">WEB</span>
+                            <span className="step-action">{isSearching ? 'search' : 'inspect'}</span>
+                            <span className="step-target">
+                              {isSearching ? activeResearchQuery : currentSource?.domain ?? 'ready'}
+                            </span>
+                            <span className="computer-action-result">
+                              {isSearching
+                                ? 'Fetching web results…'
+                                : `${researchResults.length} source${researchResults.length === 1 ? '' : 's'} found`}
+                            </span>
+                          </div>
+                        </div>
+                      )
+                    })()}
+
                     {messages.map((message) => (
                       <article className={`message message-${message.role} item-pop`} key={message.id}>
                         {message.role === 'user' ? (

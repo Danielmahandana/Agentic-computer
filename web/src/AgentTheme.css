@@ -13,8 +13,10 @@
 .notebook {
   height: 100dvh;
   min-height: 0;
-  padding: 22px 18px 16px;
-  overflow: hidden;
+  padding: 20px 18px 16px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-width: thin;
   border-radius: 0 32px 32px 0;
   border-right: 1px solid rgba(43, 36, 30, 0.08);
   background: rgba(239, 232, 220, 0.52);
@@ -203,7 +205,10 @@
   display: flex;
   flex-direction: column;
   min-height: 0;
-  overflow: hidden;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(74, 107, 87, 0.25) transparent;
   border-right: 1px dashed rgba(43, 36, 30, 0.13);
   background: rgba(239, 232, 220, 0.22);
 }
@@ -223,12 +228,11 @@
 }
 
 .procedures-card {
-  flex: 1;
-  min-height: 0;
+  flex: 1 0 auto;
+  min-height: 160px;
   display: flex;
   flex-direction: column;
   padding: 18px 22px 16px;
-  overflow: hidden;
 }
 
 .stage-card {
@@ -453,10 +457,12 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
-  gap: 18px;
+  justify-content: safe center;
+  gap: 16px;
   text-align: center;
-  padding: 4px 12px;
+  padding: 16px 12px 24px;
+  overflow-y: auto;
+  scrollbar-width: thin;
   animation: stage-enter 500ms var(--ease-grown) both;
 }
 
@@ -982,14 +988,22 @@
 .research-stage .conversation-scroll {
   flex: 1;
   min-height: 0;
-  padding: 14px clamp(20px, 4vw, 56px) 10px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 18px clamp(20px, 4vw, 56px) 24px;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(74, 107, 87, 0.3) transparent;
+}
+
+.research-stage .conversation-scroll.has-messages {
+  justify-content: flex-start;
 }
 
 .research-stage .conversation-scroll.is-welcome {
-  overflow: hidden;
+  overflow-y: auto;
   display: flex;
   flex-direction: column;
-  justify-content: center;
+  justify-content: safe center;
 }
 
 .welcome.welcome-fit {
@@ -1164,4 +1178,219 @@
   .procedures-card {
     display: none;
   }
+}
+
+/* ─── Live Browser Computer Viewport ─── */
+.computer-viewport {
+  border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.12));
+  border-radius: 14px;
+  overflow: hidden;
+  background: #0f1115;
+  margin-bottom: 14px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.22);
+}
+
+.computer-chrome {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  background: rgba(255, 255, 255, 0.04);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.computer-dots {
+  display: flex;
+  gap: 5px;
+  flex-shrink: 0;
+}
+
+.computer-dots span {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.22);
+}
+
+.computer-dots span:nth-child(1) { background: #ff5f56; }
+.computer-dots span:nth-child(2) { background: #ffbd2e; }
+.computer-dots span:nth-child(3) { background: #27c93f; }
+
+.computer-address {
+  flex: 1;
+  min-width: 0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.72);
+  background: rgba(0, 0, 0, 0.35);
+  padding: 4px 10px;
+  border-radius: 6px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.computer-scrubber {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.live-dot-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: #4ade80;
+  background: rgba(74, 222, 128, 0.12);
+  padding: 2px 7px;
+  border-radius: 999px;
+}
+
+.live-dot-pill i {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #4ade80;
+  animation: pulse-live 1.2s ease-in-out infinite;
+}
+
+@keyframes pulse-live {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.35; transform: scale(0.8); }
+}
+
+.scrubber-btn {
+  background: rgba(255, 255, 255, 0.08);
+  color: #f3f4f6;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 6px;
+  padding: 2px 7px;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.scrubber-btn:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.scrubber-count {
+  font-size: 11px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  color: rgba(255, 255, 255, 0.75);
+}
+
+.computer-screen {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  max-height: 360px;
+  background: #14171d;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.computer-frame-img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
+}
+
+.computer-screen-empty {
+  color: rgba(255, 255, 255, 0.5);
+  font-size: 13px;
+  padding: 24px;
+  text-align: center;
+}
+
+.computer-action-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: rgba(255, 255, 255, 0.03);
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  font-size: 12px;
+  flex-wrap: wrap;
+}
+
+.computer-action-result {
+  color: rgba(255, 255, 255, 0.65);
+  margin-left: auto;
+  font-size: 11px;
+}
+
+.step-clickable {
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.step-selected {
+  border-color: rgba(74, 222, 128, 0.55) !important;
+}
+
+/* ─── Research Browser Viewport ─── */
+.research-browser-viewport {
+  margin-bottom: 18px;
+}
+
+.research-browser-screen {
+  aspect-ratio: auto;
+  min-height: 170px;
+  padding: 20px 24px;
+  align-items: flex-start;
+  justify-content: flex-start;
+}
+
+.research-browser-page {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  color: #f3f4f6;
+}
+
+.research-browser-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.research-browser-domain {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+  color: #4ade80;
+  background: rgba(74, 222, 128, 0.12);
+  padding: 3px 8px;
+  border-radius: 999px;
+}
+
+.research-browser-title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: #f9fafb;
+  line-height: 1.35;
+}
+
+.research-browser-snippet {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.55;
+  color: rgba(255, 255, 255, 0.78);
+}
+
+.research-browser-status {
+  margin: 0 0 6px;
+  font-size: 14px;
+  font-weight: 500;
+  color: #f3f4f6;
 }

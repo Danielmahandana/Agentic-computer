@@ -10,6 +10,7 @@ import {
   submitTask,
   type ArtifactContentResponse,
   type ArtifactEntry,
+  type BrowserFrame,
   type PageObservation,
   type QuarantineExportResponse,
   type SubmissionPlannerName,
@@ -102,6 +103,8 @@ export function AgentWorkspace({
 
   const [activeTask, setActiveTask] = useState<TaskView | null>(null)
   const [liveObservation, setLiveObservation] = useState<PageObservation | null>(null)
+  const [liveFrames, setLiveFrames] = useState<BrowserFrame[]>([])
+  const [selectedFrameIndex, setSelectedFrameIndex] = useState<number | null>(null)
   const [liveSteps, setLiveSteps] = useState<TaskStep[]>([])
   const [artifacts, setArtifacts] = useState<ArtifactEntry[]>([])
   const [inspectedArtifact, setInspectedArtifact] = useState<ArtifactContentResponse | null>(null)
@@ -128,6 +131,8 @@ export function AgentWorkspace({
     if (!selectedTaskId) {
       setActiveTask(null)
       setLiveObservation(null)
+      setLiveFrames([])
+      setSelectedFrameIndex(null)
       setLiveSteps([])
       setArtifacts([])
       setInspectedArtifact(null)
@@ -150,6 +155,8 @@ export function AgentWorkspace({
         if (cancelled) return
         setActiveTask(view)
         setLiveObservation(view.latest_observation)
+        setLiveFrames(view.frames ?? (view.latest_frame ? [view.latest_frame] : []))
+        setSelectedFrameIndex(null)
         setLiveSteps(view.result?.steps ?? [])
 
         const artifactList = await listTaskArtifacts(taskId)
@@ -201,6 +208,20 @@ export function AgentWorkspace({
       try {
         const observation = JSON.parse((event as MessageEvent).data) as PageObservation
         setLiveObservation(observation)
+      } catch {
+        // Ignore malformed event payloads
+      }
+    })
+
+    source.addEventListener('frame', (event) => {
+      try {
+        const frame = JSON.parse((event as MessageEvent).data) as BrowserFrame
+        setLiveFrames((prev) => {
+          if (prev.some((existing) => existing.step_number === frame.step_number)) {
+            return prev
+          }
+          return [...prev, frame]
+        })
       } catch {
         // Ignore malformed event payloads
       }
@@ -284,6 +305,8 @@ export function AgentWorkspace({
       })
       setActiveTask(created)
       setLiveObservation(created.latest_observation)
+      setLiveFrames(created.frames ?? [])
+      setSelectedFrameIndex(null)
       setLiveSteps([])
       setArtifacts([])
       onSelectTask(created.task_id)
@@ -351,6 +374,8 @@ export function AgentWorkspace({
       const created = await replayProcedure(name, replayQuery, maxSteps, timeoutSeconds)
       setActiveTask(created)
       setLiveObservation(created.latest_observation)
+      setLiveFrames(created.frames ?? [])
+      setSelectedFrameIndex(null)
       setLiveSteps([])
       setArtifacts([])
       onSelectTask(created.task_id)
@@ -398,6 +423,13 @@ export function AgentWorkspace({
   const isTaskCompleted = activeTask?.status === 'completed'
   const displayedSteps = activeTask?.result?.steps ?? liveSteps
   const matchingRecords = activeTask?.result?.records ?? []
+  const activeFrameIndex =
+    liveFrames.length === 0
+      ? -1
+      : selectedFrameIndex === null
+        ? liveFrames.length - 1
+        : Math.min(selectedFrameIndex, liveFrames.length - 1)
+  const currentFrame = activeFrameIndex >= 0 ? liveFrames[activeFrameIndex] : null
   const totalDurationMs = Math.round(
     displayedSteps.reduce((sum, step) => sum + (step.duration_ms || 0), 0),
   )
@@ -717,6 +749,93 @@ export function AgentWorkspace({
             <div className="stage-panel-body" key={stageTab}>
               {stageTab === 'trace' && (
                 <div className="panel-swap">
+                  <div className="computer-viewport">
+                    <div className="computer-chrome">
+                      <div className="computer-dots" aria-hidden="true">
+                        <span />
+                        <span />
+                        <span />
+                      </div>
+                      <div className="computer-address" title={currentFrame?.url ?? liveObservation?.url ?? ''}>
+                        {currentFrame?.url ?? liveObservation?.url ?? 'about:blank'}
+                      </div>
+                      <div className="computer-scrubber">
+                        {isTaskActive && (
+                          <span className="live-dot-pill">
+                            <i />
+                            LIVE
+                          </span>
+                        )}
+                        {liveFrames.length > 0 && (
+                          <>
+                            <button
+                              type="button"
+                              className="scrubber-btn"
+                              disabled={activeFrameIndex <= 0}
+                              onClick={() => setSelectedFrameIndex(Math.max(0, activeFrameIndex - 1))}
+                              aria-label="Previous frame"
+                            >
+                              ◀
+                            </button>
+                            <span className="scrubber-count">
+                              {activeFrameIndex + 1} / {liveFrames.length}
+                            </span>
+                            <button
+                              type="button"
+                              className="scrubber-btn"
+                              disabled={activeFrameIndex >= liveFrames.length - 1}
+                              onClick={() => {
+                                const next = activeFrameIndex + 1
+                                setSelectedFrameIndex(next >= liveFrames.length - 1 ? null : next)
+                              }}
+                              aria-label="Next frame"
+                            >
+                              ▶
+                            </button>
+                            {selectedFrameIndex !== null && (
+                              <button
+                                type="button"
+                                className="scrubber-btn"
+                                onClick={() => setSelectedFrameIndex(null)}
+                              >
+                                Latest
+                              </button>
+                            )}
+                          </>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="computer-screen">
+                      {currentFrame ? (
+                        <img
+                          src={currentFrame.image}
+                          alt={`Browser view: ${currentFrame.title || currentFrame.action}`}
+                          className="computer-frame-img"
+                        />
+                      ) : (
+                        <div className="computer-screen-empty">
+                          <span>
+                            {isTaskActive
+                              ? 'Launching headless Chromium and capturing live frames…'
+                              : 'No live browser frames captured for this historical run.'}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+
+                    {currentFrame && (
+                      <div className="computer-action-bar">
+                        <span className="step-num">
+                          {currentFrame.step_number === 0 ? 'INIT' : `#${currentFrame.step_number}`}
+                        </span>
+                        <span className="step-action">{currentFrame.action}</span>
+                        <span className="step-target">{currentFrame.target}</span>
+                        <span className="computer-action-result">{currentFrame.result}</span>
+                      </div>
+                    )}
+                  </div>
+
                   {liveObservation && (
                     <div className="observation-box">
                       <div className="obs-header">
@@ -743,8 +862,15 @@ export function AgentWorkspace({
                     <p className="empty-copy">Waiting for the browser agent to take its first step…</p>
                   ) : (
                     <ol className="step-list">
-                      {displayedSteps.map((step) => (
-                        <li key={step.number} className="step-item item-pop">
+                      {displayedSteps.map((step) => {
+                        const frameIdx = liveFrames.findIndex((f) => f.step_number === step.number)
+                        const isSelectedFrame = frameIdx >= 0 && frameIdx === activeFrameIndex
+                        return (
+                        <li
+                          key={step.number}
+                          className={`step-item item-pop ${frameIdx >= 0 ? 'step-clickable' : ''} ${isSelectedFrame ? 'step-selected' : ''}`}
+                          onClick={frameIdx >= 0 ? () => setSelectedFrameIndex(frameIdx) : undefined}
+                        >
                           <div className="step-top">
                             <span className="step-num">#{step.number}</span>
                             <span className="step-action">{step.action}</span>
@@ -755,7 +881,8 @@ export function AgentWorkspace({
                           {step.reasoning && <p className="step-reason">{step.reasoning}</p>}
                           {step.result && <p className="step-detail">{step.result}</p>}
                         </li>
-                      ))}
+                        )
+                      })}
                     </ol>
                   )}
                 </div>

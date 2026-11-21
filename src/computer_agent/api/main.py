@@ -271,6 +271,8 @@ class TaskManager:
             "start_page": managed.request.start_page,
             "planner": managed.planner_name,
             "latest_observation": managed.control.latest_observation,
+            "latest_frame": managed.control.latest_frame,
+            "frames": list(managed.control.frames),
             "result": None if managed.result is None else asdict(managed.result),
             "error": managed.error,
         }
@@ -284,6 +286,8 @@ class TaskManager:
             "start_page": summary.request.start_page,
             "planner": "persisted",
             "latest_observation": None,
+            "latest_frame": None,
+            "frames": [],
             "result": summary.result,
             "error": summary.reason if summary.status == "failed" else None,
             "created_at": summary.created_at,

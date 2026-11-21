@@ -26,6 +26,8 @@ class TaskControl:
         self._events: deque[ControlEvent] = deque(maxlen=100)
         self._subscribers: set[asyncio.Queue[ControlEvent]] = set()
         self.latest_observation: dict[str, object] | None = None
+        self.latest_frame: dict[str, object] | None = None
+        self.frames: list[dict[str, object]] = []
 
     @property
     def paused(self) -> bool:
@@ -59,6 +61,11 @@ class TaskControl:
         self._events.append(control_event)
         if event == "observation":
             self.latest_observation = data
+        elif event == "frame":
+            self.latest_frame = data
+            self.frames.append(data)
+            if len(self.frames) > 50:
+                self.frames = self.frames[-50:]
         for subscriber in tuple(self._subscribers):
             if subscriber.full():
                 subscriber.get_nowait()
